@@ -19,13 +19,51 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 DASHBOARD_FILE = Path(__file__).parent / "dashboard.html"
 
 
+def _save_trace(trace_id, model, feature, prompt, completion,
+                in_tok, out_tok, latency_ms, system="groq"):
+    """Save trace directly to store — no HTTP needed."""
+    cost = 0.0
+    pricing = {
+        "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
+        "llama3.2": {"input": 0.05, "output": 0.10},
+        "gpt-4o": {"input": 2.50, "output": 10.00},
+    }
+    p = pricing.get(model)
+    if p:
+        cost = (in_tok / 1_000_000) * p["input"] + (out_tok / 1_000_000) * p["output"]
+
+    store.insert_spans([{
+        "trace_id": trace_id,
+        "span_id": "span-" + trace_id[-6:],
+        "parent_span_id": "",
+        "name": "groq.chat",
+        "start_time": "",
+        "end_time": "",
+        "duration_ms": latency_ms,
+        "gen_ai_system": system,
+        "model": model,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "cost_usd": round(cost, 6),
+        "prompt": prompt[:500],
+        "completion": completion[:500],
+        "user_id": "",
+        "session_id": "",
+        "feature": feature,
+        "environment": "production",
+        "status_code": "OK",
+        "error_message": "",
+    }])
+
+
 class ChatRequest(BaseModel):
     message: str
 
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    import time, uuid, requests as http_requests
+    import time
+    import uuid
     from openai import OpenAI
 
     msg = req.message.strip()
@@ -86,36 +124,25 @@ Answer concisely (2-4 sentences). Use **bold** for numbers."""
         reply = response.choices[0].message.content.strip()
         latency_ms = (time.time() - start) * 1000
         usage = response.usage
-        trace_payload = {
-            "resourceSpans": [{"scopeSpans": [{"spans": [{
-                "traceId": "trace-" + uuid.uuid4().hex[:12],
-                "spanId": "span-" + uuid.uuid4().hex[:8],
-                "name": "groq.chat",
-                "startTimeUnixNano": str(int((time.time() - latency_ms/1000) * 1e9)),
-                "endTimeUnixNano": str(int(time.time() * 1e9)),
-                "attributes": [
-                    {"key": "gen_ai.system", "value": {"stringValue": "groq"}},
-                    {"key": "gen_ai.request.model", "value": {"stringValue": GROQ_MODEL}},
-                    {"key": "gen_ai.usage.input_tokens", "value": {"intValue": str(usage.prompt_tokens if usage else 0)}},
-                    {"key": "gen_ai.usage.output_tokens", "value": {"intValue": str(usage.completion_tokens if usage else 0)}},
-                    {"key": "feature", "value": {"stringValue": "copilot-chat"}},
-                    {"key": "llm.prompts", "value": {"stringValue": msg[:500]}},
-                    {"key": "llm.completions", "value": {"stringValue": reply[:500]}},
-                ]
-            }]}]}]
-        }
-        try:
-            http_requests.post("http://localhost:8000/v1/traces", json=trace_payload, timeout=3)
-        except Exception:
-            pass
+        _save_trace(
+            trace_id="trace-" + uuid.uuid4().hex[:12],
+            model=GROQ_MODEL,
+            feature="copilot-chat",
+            prompt=msg,
+            completion=reply,
+            in_tok=usage.prompt_tokens if usage else 0,
+            out_tok=usage.completion_tokens if usage else 0,
+            latency_ms=latency_ms,
+        )
         return {"reply": reply}
     except Exception as e:
-        return {"reply": f"Error: {type(e).__name__}"}
+        return {"reply": f"Error: {type(e).__name__}: {str(e)[:150]}"}
 
 
 @app.post("/api/seed-real")
 def seed_real_data():
-    import time, uuid, requests as http_requests
+    import time
+    import uuid
     from openai import OpenAI
 
     prompts = [
@@ -146,25 +173,16 @@ def seed_real_data():
             latency_ms = (time.time() - start) * 1000
             completion = response.choices[0].message.content.strip()
             usage = response.usage
-            trace_payload = {
-                "resourceSpans": [{"scopeSpans": [{"spans": [{
-                    "traceId": "trace-" + uuid.uuid4().hex[:12],
-                    "spanId": "span-" + uuid.uuid4().hex[:8],
-                    "name": "groq.chat",
-                    "startTimeUnixNano": str(int((time.time() - latency_ms/1000) * 1e9)),
-                    "endTimeUnixNano": str(int(time.time() * 1e9)),
-                    "attributes": [
-                        {"key": "gen_ai.system", "value": {"stringValue": "groq"}},
-                        {"key": "gen_ai.request.model", "value": {"stringValue": GROQ_MODEL}},
-                        {"key": "gen_ai.usage.input_tokens", "value": {"intValue": str(usage.prompt_tokens if usage else 0)}},
-                        {"key": "gen_ai.usage.output_tokens", "value": {"intValue": str(usage.completion_tokens if usage else 0)}},
-                        {"key": "feature", "value": {"stringValue": feature}},
-                        {"key": "llm.prompts", "value": {"stringValue": prompt}},
-                        {"key": "llm.completions", "value": {"stringValue": completion[:500]}},
-                    ]
-                }]}]}]
-            }
-            http_requests.post("http://localhost:8000/v1/traces", json=trace_payload, timeout=3)
+            _save_trace(
+                trace_id="trace-" + uuid.uuid4().hex[:12],
+                model=GROQ_MODEL,
+                feature=feature,
+                prompt=prompt,
+                completion=completion,
+                in_tok=usage.prompt_tokens if usage else 0,
+                out_tok=usage.completion_tokens if usage else 0,
+                latency_ms=latency_ms,
+            )
             count += 1
         except Exception as e:
             print(f"[seed] error: {e}")
