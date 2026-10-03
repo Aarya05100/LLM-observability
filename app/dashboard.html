@@ -56,8 +56,6 @@ html.dark .header-blur { background: rgba(5,7,13,0.75); }
 .typing span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typing { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
 .toast { position: fixed; bottom: 24px; right: 24px; background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 14px 22px; border-radius: 14px; font-size: 14px; z-index: 200; box-shadow: 0 16px 48px -8px rgba(0,0,0,0.5); border: 1px solid rgba(99,102,241,0.3); }
-.row-hover { cursor: pointer; transition: background 0.15s; }
-.row-hover:hover { background: var(--subtle); }
 </style>
 <script>tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] } } } }</script>
 </head>
@@ -87,7 +85,7 @@ html.dark .header-blur { background: rgba(5,7,13,0.75); }
         <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></div>
         <span class="text-xs font-bold text-emerald-600" id="liveStatus">Live</span>
       </div>
-      <button onclick="toggleTheme()" class="btn-ghost w-9 h-9 rounded-xl flex items-center justify-center" title="Theme">
+      <button onclick="toggleTheme()" class="btn-ghost w-9 h-9 rounded-xl flex items-center justify-center">
         <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
         <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
@@ -256,7 +254,7 @@ async function load() {
 
     var h = '';
     sp.slice(-15).reverse().forEach(function(x){
-      h += '<tr class="row-hover" style="border-bottom:1px solid var(--border)">';
+      h += '<tr style="border-bottom:1px solid var(--border)">';
       h += '<td class="px-6 py-4 mono text-xs" style="color:var(--muted)">' + (x.trace_id||'').slice(0,14) + '</td>';
       h += '<td class="px-6 py-4"><span style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(99,102,241,0.1);color:#6366f1">' + (x.model||'?') + '</span></td>';
       h += '<td class="px-6 py-4 font-semibold">' + (x.feature||'-') + '</td>';
