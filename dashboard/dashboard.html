@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Observability — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      colors: {
+        brand: {
+          50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc',
+          400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+          800: '#3730a3', 900: '#312e81'
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .gradient-text {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .card-hover { transition: all 0.2s ease; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px rgba(99, 102, 241, 0.15); }
+  .pulse-dot { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .fade-in { animation: fadeIn 0.5s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50 backdrop-blur-sm bg-white/90">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold shadow-lg shadow-indigo-500/30">
+        ⚡
+      </div>
+      <div>
+        <h1 class="text-base font-bold tracking-tight">LLM Observability</h1>
+        <p class="text-xs text-slate-500">Real-time tracing platform</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200">
+        <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></div>
+        <span class="text-xs font-medium text-emerald-700" id="liveStatus">Live</span>
+      </div>
+      <button onclick="gen()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Generate Traces
+      </button>
+      <button onclick="load()" class="px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-6 py-8 fade-in">
+
+  <!-- Hero -->
+  <div class="mb-8">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 mb-3">
+      <div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+      <span class="text-xs font-semibold text-indigo-700">LIVE MONITORING</span>
+    </div>
+    <h2 class="text-4xl font-extrabold tracking-tight mb-2">
+      <span class="gradient-text">Real-time insights</span> for your LLM stack
+    </h2>
+    <p class="text-slate-600 max-w-2xl">Track every prompt, token, and dollar across your LLM applications. Powered by OpenTelemetry GenAI conventions.</p>
+  </div>
+
+  <!-- Metric Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+    <!-- Requests -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover">
+      <div class="flex items-center justify-between mb-4">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <span class="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">+12.4%</span>
+      </div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Requests</p>
+      <p class="text-3xl font-bold tracking-tight" id="mReq">0</p>
+      <p class="text-xs text-slate-400 mt-2">All-time traces captured</p>
+    </div>
+
+    <!-- Cost -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover">
+      <div class="flex items-center justify-between mb-4">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <span class="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full" id="mCostSub">0 models</span>
+      </div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Cost</p>
+      <p class="text-3xl font-bold tracking-tight" id="mCost">$0.00</p>
+      <p class="text-xs text-slate-400 mt-2">Across all providers</p>
+    </div>
+
+    <!-- Tokens -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover">
+      <div class="flex items-center justify-between mb-4">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <span class="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">input+output</span>
+      </div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Tokens</p>
+      <p class="text-3xl font-bold tracking-tight" id="mTok">0</p>
+      <p class="text-xs text-slate-400 mt-2">Processed by models</p>
+    </div>
+
+    <!-- Latency -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover">
+      <div class="flex items-center justify-between mb-4">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <span class="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded-full">avg</span>
+      </div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Avg Latency</p>
+      <p class="text-3xl font-bold tracking-tight" id="mLat">0ms</p>
+      <p class="text-xs text-slate-400 mt-2">Response time</p>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h3 class="font-bold text-slate-900">Cost by Feature</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Which features drive spend</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+      </div>
+      <div style="height: 280px;"><canvas id="c1"></canvas></div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-slate-200 p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h3 class="font-bold text-slate-900">Cost by Model</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Distribution across providers</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+        </div>
+      </div>
+      <div style="height: 280px;"><canvas id="c2"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+      <div>
+        <h3 class="font-bold text-slate-900">Recent Traces</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Latest LLM calls captured</p>
+      </div>
+      <button onclick="load()" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">Refresh →</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Trace ID</th>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Model</th>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Feature</th>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tokens</th>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost</th>
+            <th class="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Latency</th>
+          </tr>
+        </thead>
+        <tbody id="tbody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+    <div id="empty" class="py-16 text-center">
+      <div class="w-16 h-16 rounded-2xl bg-slate-100 mx-auto mb-4 flex items-center justify-center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <p class="text-slate-500 font-medium">No traces yet</p>
+      <p class="text-slate-400 text-xs mt-1">Click "Generate Traces" to populate data</p>
+    </div>
+  </div>
+
+</main>
+
+<script>
+var c1, c2;
+var palette = ['#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#ef4444'];
+
+async function load() {
+  try {
+    var r = await Promise.all([
+      fetch('/api/costs').then(function(x){ return x.json(); }),
+      fetch('/api/spans').then(function(x){ return x.json(); })
+    ]);
+    var costs = r[0], spansRes = r[1];
+    var sp = spansRes.spans || [];
+    var cf = costs.cost_by_feature || {};
+    var cm = costs.cost_by_model || {};
+
+    var tc = 0; for (var k in cf) tc += cf[k];
+    var tt = 0;
+    for (var i = 0; i < sp.length; i++) tt += (sp[i].input_tokens || 0) + (sp[i].output_tokens || 0);
+    var al = sp.length ? sp.reduce(function(a, x){ return a + (x.duration_ms || 0); }, 0) / sp.length : 0;
+
+    document.getElementById('mReq').textContent = sp.length.toLocaleString();
+    document.getElementById('mCost').textContent = '$' + tc.toFixed(4);
+    document.getElementById('mCostSub').textContent = Object.keys(cm).length + ' models';
+    document.getElementById('mTok').textContent = tt.toLocaleString();
+    document.getElementById('mLat').textContent = al.toFixed(0) + 'ms';
+    document.getElementById('liveStatus').textContent = 'Live · ' + sp.length;
+
+    // Empty state
+    var empty = document.getElementById('empty');
+    var tbody = document.getElementById('tbody');
+    if (sp.length === 0) {
+      empty.style.display = 'block';
+      tbody.innerHTML = '';
+    } else {
+      empty.style.display = 'none';
+    }
+
+    // Bar chart
+    var feats = Object.keys(cf);
+    var vals = Object.values(cf);
+    if (c1) c1.destroy();
+    c1 = new Chart(document.getElementById('c1'), {
+      type: 'bar',
+      data: {
+        labels: feats,
+        datasets: [{
+          data: vals,
+          backgroundColor: feats.map(function(_, i){ return palette[i % palette.length] + 'cc'; }),
+          borderRadius: 8,
+          borderSkipped: false,
+          barThickness: 32
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: {
+          backgroundColor: '#0f172a', padding: 12, borderRadius: 8,
+          callbacks: { label: function(ctx){ return '$' + ctx.parsed.x.toFixed(6); } }
+        }},
+        scales: {
+          x: { grid: { color: '#f1f5f9', drawBorder: false }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+          y: { grid: { display: false }, ticks: { color: '#334155', font: { size: 12, weight: '500' } } }
+        }
+      }
+    });
+
+    // Doughnut
+    var models = Object.keys(cm);
+    var mvals = Object.values(cm);
+    if (c2) c2.destroy();
+    c2 = new Chart(document.getElementById('c2'), {
+      type: 'doughnut',
+      data: {
+        labels: models,
+        datasets: [{
+          data: mvals,
+          backgroundColor: models.map(function(_, i){ return palette[i % palette.length]; }),
+          borderWidth: 4,
+          borderColor: '#ffffff',
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#475569', padding: 16, boxWidth: 12, boxHeight: 12, font: { size: 12, weight: '500' }, usePointStyle: true, pointStyle: 'circle' }
+          },
+          tooltip: {
+            backgroundColor: '#0f172a', padding: 12, borderRadius: 8,
+            callbacks: { label: function(ctx){ return ctx.label + ': $' + ctx.parsed.toFixed(6); } }
+          }
+        }
+      }
+    });
+
+    // Table
+    var h = '';
+    var rec = sp.slice(-15).reverse();
+    for (var j = 0; j < rec.length; j++) {
+      var x = rec[j];
+      var modelColors = {
+        'gpt-4o': 'bg-blue-50 text-blue-700 border-blue-100',
+        'gpt-4o-mini': 'bg-cyan-50 text-cyan-700 border-cyan-100',
+        'claude-3-5-sonnet': 'bg-purple-50 text-purple-700 border-purple-100',
+        'claude-3-haiku': 'bg-pink-50 text-pink-700 border-pink-100'
+      };
+      var cls = modelColors[x.model] || 'bg-slate-100 text-slate-700 border-slate-200';
+      h += '<tr class="hover:bg-slate-50 transition-colors">';
+      h += '<td class="px-6 py-4 font-mono text-xs text-slate-500">' + (x.trace_id || '').slice(0, 14) + '</td>';
+      h += '<td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border ' + cls + '">' + (x.model || '?') + '</span></td>';
+      h += '<td class="px-6 py-4 text-slate-700 font-medium">' + (x.feature || '-') + '</td>';
+      h += '<td class="px-6 py-4 text-slate-600">' + ((x.input_tokens || 0) + (x.output_tokens || 0)).toLocaleString() + '</td>';
+      h += '<td class="px-6 py-4 font-mono text-xs text-slate-600">$' + (x.cost_usd || 0).toFixed(6) + '</td>';
+      h += '<td class="px-6 py-4"><span class="inline-flex items-center gap-1 text-slate-600 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>' + (x.duration_ms || 0).toFixed(0) + 'ms</span></td>';
+      h += '</tr>';
+    }
+    tbody.innerHTML = h;
+
+  } catch (e) {
+    console.error(e);
+    document.getElementById('liveStatus').textContent = 'Offline';
+  }
+}
+
+async function gen() {
+  var mo = ['gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-haiku'];
+  var fe = ['customer-support', 'code-review', 'summarization', 'chat', 'search'];
+  for (var i = 0; i < 50; i++) {
+    var m = mo[Math.floor(Math.random() * mo.length)];
+    var f = fe[Math.floor(Math.random() * fe.length)];
+    var p = {
+      resourceSpans: [{ scopeSpans: [{ spans: [{
+        traceId: 'trace-' + Math.floor(Math.random() * 1e6),
+        spanId: 'span-' + Math.floor(Math.random() * 1e4),
+        name: 'openai.chat',
+        startTimeUnixNano: String(Date.now() * 1e6),
+        endTimeUnixNano: String((Date.now() + 1500) * 1e6),
+        attributes: [
+          { key: 'gen_ai.request.model', value: { stringValue: m } },
+          { key: 'gen_ai.usage.input_tokens', value: { intValue: String(Math.floor(Math.random() * 750 + 50)) } },
+          { key: 'gen_ai.usage.output_tokens', value: { intValue: String(Math.floor(Math.random() * 470 + 30)) } },
+          { key: 'feature', value: { stringValue: f } }
+        ]
+      }] }] }]
+    };
+    await fetch('/v1/traces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p)
+    });
+  }
+  load();
+}
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>
