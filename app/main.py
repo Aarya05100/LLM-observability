@@ -1,4 +1,5 @@
-﻿from fastapi import FastAPI
+import os
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from app.ingest.otlp_endpoint import router as ingest_router
@@ -10,6 +11,10 @@ app.include_router(ingest_router)
 app.include_router(traces_router, prefix="/api")
 
 store = MemoryStore()
+
+# Groq client config (works on cloud)
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 class ChatRequest(BaseModel):
@@ -83,9 +88,9 @@ INSTRUCTIONS:
 
     start = time.time()
     try:
-        client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        client = OpenAI(base_url=GROQ_BASE_URL, api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
-            model="llama3.2",
+            model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": context},
                 {"role": "user", "content": msg},
@@ -107,12 +112,12 @@ INSTRUCTIONS:
                     "spans": [{
                         "traceId": "trace-" + uuid.uuid4().hex[:12],
                         "spanId": "span-" + uuid.uuid4().hex[:8],
-                        "name": "ollama.chat",
+                        "name": "groq.chat",
                         "startTimeUnixNano": str(int((time.time() - latency_ms/1000) * 1e9)),
                         "endTimeUnixNano": str(int(time.time() * 1e9)),
                         "attributes": [
-                            {"key": "gen_ai.system", "value": {"stringValue": "ollama"}},
-                            {"key": "gen_ai.request.model", "value": {"stringValue": "llama3.2"}},
+                            {"key": "gen_ai.system", "value": {"stringValue": "groq"}},
+                            {"key": "gen_ai.request.model", "value": {"stringValue": GROQ_MODEL}},
                             {"key": "gen_ai.usage.input_tokens", "value": {"intValue": str(in_tok)}},
                             {"key": "gen_ai.usage.output_tokens", "value": {"intValue": str(out_tok)}},
                             {"key": "feature", "value": {"stringValue": "copilot-chat"}},
@@ -130,16 +135,16 @@ INSTRUCTIONS:
 
         return {"reply": reply}
 
-    except Exception:
+    except Exception as e:
         if costs_f:
             top_f = max(costs_f.items(), key=lambda x: x[1])
-            return {"reply": f"**Summary**\n- Traces: {len(spans)}\n- Cost: ${total_cost:.4f}\n- Avg latency: {avg_lat:.0f}ms\n- Top feature: **{top_f[0]}**\n\n(Ollama offline)"}
-        return {"reply": "Error connecting to Ollama."}
+            return {"reply": f"**Summary**\n- Traces: {len(spans)}\n- Cost: ${total_cost:.4f}\n- Avg latency: {avg_lat:.0f}ms\n- Top feature: **{top_f[0]}**\n\n(Error: {type(e).__name__})"}
+        return {"reply": f"Error: {type(e).__name__} - {str(e)[:100]}"}
 
 
 @app.post("/api/seed-real")
 def seed_real_data():
-    """Generate 10 REAL Ollama traces with varied prompts."""
+    """Generate 10 REAL traces via Groq."""
     import time
     import uuid
     import requests as http_requests
@@ -158,14 +163,14 @@ def seed_real_data():
         ("How does vector search work?", "search"),
     ]
 
-    client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+    client = OpenAI(base_url=GROQ_BASE_URL, api_key=os.getenv("GROQ_API_KEY"))
     count = 0
 
     for prompt, feature in prompts:
         try:
             start = time.time()
             response = client.chat.completions.create(
-                model="llama3.2",
+                model=GROQ_MODEL,
                 messages=[
                     {"role": "system", "content": "Answer in 1-2 sentences."},
                     {"role": "user", "content": prompt},
@@ -183,12 +188,12 @@ def seed_real_data():
                         "spans": [{
                             "traceId": "trace-" + uuid.uuid4().hex[:12],
                             "spanId": "span-" + uuid.uuid4().hex[:8],
-                            "name": "ollama.chat",
+                            "name": "groq.chat",
                             "startTimeUnixNano": str(int((time.time() - latency_ms/1000) * 1e9)),
                             "endTimeUnixNano": str(int(time.time() * 1e9)),
                             "attributes": [
-                                {"key": "gen_ai.system", "value": {"stringValue": "ollama"}},
-                                {"key": "gen_ai.request.model", "value": {"stringValue": "llama3.2"}},
+                                {"key": "gen_ai.system", "value": {"stringValue": "groq"}},
+                                {"key": "gen_ai.request.model", "value": {"stringValue": GROQ_MODEL}},
                                 {"key": "gen_ai.usage.input_tokens", "value": {"intValue": str(usage.prompt_tokens if usage else 0)}},
                                 {"key": "gen_ai.usage.output_tokens", "value": {"intValue": str(usage.completion_tokens if usage else 0)}},
                                 {"key": "feature", "value": {"stringValue": feature}},
@@ -359,7 +364,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <span class="text-xs font-bold tracking-wider" style="color: #6366f1;">LIVE MONITORING</span>
       </div>
       <h2 class="text-4xl md:text-5xl font-black tracking-tighter leading-none"><span class="grad-text">Real-time insights</span></h2>
-      <p class="text-base mt-3 max-w-xl" style="color: var(--muted);">Track every prompt, token, and dollar across your LLM applications. Powered by local Llama 3.2 via Ollama.</p>
+      <p class="text-base mt-3 max-w-xl" style="color: var(--muted);">Track every prompt, token, and dollar across your LLM applications. Powered by Groq (llama-3.3-70b).</p>
     </div>
     <div class="flex gap-2">
       <button onclick="exportData('csv')" class="btn-ghost px-4 py-2.5 rounded-xl text-xs font-semibold">Export CSV</button>
@@ -368,460 +373,4 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 
   <div class="flex flex-wrap items-center gap-3 mb-8">
-    <div class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M3 12h18M3 18h18"/></svg>FILTERS</div>
-    <select id="filterModel" onchange="load()" class="px-3 py-1.5 rounded-xl text-sm font-medium">
-      <option value="all">All models</option>
-      <option value="llama3.2">Llama 3.2</option>
-      <option value="gpt-4o">GPT-4o</option>
-      <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
-    </select>
-    <select id="filterFeature" onchange="load()" class="px-3 py-1.5 rounded-xl text-sm font-medium">
-      <option value="all">All features</option>
-      <option value="customer-support">Customer Support</option>
-      <option value="code-review">Code Review</option>
-      <option value="summarization">Summarization</option>
-      <option value="chat">Chat</option>
-      <option value="search">Search</option>
-      <option value="copilot-chat">Copilot Chat</option>
-    </select>
-    <select id="filterTime" onchange="load()" class="px-3 py-1.5 rounded-xl text-sm font-medium">
-      <option value="all">All time</option>
-      <option value="1h">Last hour</option>
-      <option value="24h">Last 24 hours</option>
-      <option value="7d">Last 7 days</option>
-    </select>
-    <div class="ml-auto text-xs font-semibold mono" style="color: var(--muted);" id="filterInfo">-</div>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-    <div class="card p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        </div>
-        <span class="text-xs font-bold px-2.5 py-1 rounded-full" id="trendReq" style="color: var(--muted); background: var(--subtle);">-</span>
-      </div>
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Requests</p>
-      <p class="text-4xl font-black metric-value" id="mReq">0</p>
-      <svg class="sparkline mt-4" id="spark1" viewBox="0 0 100 44" preserveAspectRatio="none"></svg>
-    </div>
-    <div class="card p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        </div>
-        <span class="text-xs font-bold px-2.5 py-1 rounded-full" id="trendCost" style="color: var(--muted); background: var(--subtle);">-</span>
-      </div>
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Cost</p>
-      <p class="text-4xl font-black metric-value" id="mCost">$0.00</p>
-      <svg class="sparkline mt-4" id="spark2" viewBox="0 0 100 44" preserveAspectRatio="none"></svg>
-    </div>
-    <div class="card p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        </div>
-        <span class="text-xs font-bold px-2.5 py-1 rounded-full" id="trendTok" style="color: var(--muted); background: var(--subtle);">-</span>
-      </div>
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Tokens</p>
-      <p class="text-4xl font-black metric-value" id="mTok">0</p>
-      <svg class="sparkline mt-4" id="spark3" viewBox="0 0 100 44" preserveAspectRatio="none"></svg>
-    </div>
-    <div class="card p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </div>
-        <span class="text-xs font-bold px-2.5 py-1 rounded-full" id="trendLat" style="color: var(--muted); background: var(--subtle);">-</span>
-      </div>
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Avg Latency</p>
-      <p class="text-4xl font-black metric-value" id="mLat">0ms</p>
-      <svg class="sparkline mt-4" id="spark4" viewBox="0 0 100 44" preserveAspectRatio="none"></svg>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-1">Cost by Feature</h3>
-      <p class="text-xs mb-5" style="color: var(--muted);">Which features drive spend</p>
-      <div style="height: 280px;"><canvas id="c1"></canvas></div>
-    </div>
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-1">Cost by Model</h3>
-      <p class="text-xs mb-5" style="color: var(--muted);">Distribution across providers</p>
-      <div style="height: 280px;"><canvas id="c2"></canvas></div>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-1">Top Expensive Traces</h3>
-      <p class="text-xs mb-5" style="color: var(--muted);">Highest cost calls</p>
-      <div id="topExpensive" class="space-y-2"></div>
-    </div>
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-1">Latency Distribution</h3>
-      <p class="text-xs mb-5" style="color: var(--muted);">Average by model</p>
-      <div style="height: 240px;"><canvas id="c3"></canvas></div>
-    </div>
-  </div>
-
-  <div class="card overflow-hidden">
-    <div class="px-6 py-5 border-b flex items-center justify-between" style="border-color: var(--border);">
-      <div>
-        <h3 class="font-bold text-lg">Recent Traces</h3>
-        <p class="text-xs mt-0.5" style="color: var(--muted);">Click any row for full details</p>
-      </div>
-      <button onclick="load()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-semibold">Refresh</button>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="table-header"><tr>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Trace ID</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Model</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Feature</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Tokens</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Cost</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Latency</th>
-        </tr></thead>
-        <tbody id="tbody" class="divide-y" style="border-color: var(--border);"></tbody>
-      </table>
-    </div>
-    <div id="empty" class="py-20 text-center">
-      <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style="background: var(--subtle);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color: var(--muted);"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-      </div>
-      <p class="font-bold">No traces yet</p>
-      <p class="text-xs mt-1" style="color: var(--muted);">Click "Generate" to populate via Ollama</p>
-    </div>
-  </div>
-
-  <div class="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs" style="color: var(--muted);">
-    <span class="font-semibold">SHORTCUTS</span>
-    <span><span class="key-hint">G</span> Seed</span>
-    <span><span class="key-hint">R</span> Refresh</span>
-    <span><span class="key-hint">T</span> Theme</span>
-    <span><span class="key-hint">C</span> Chat</span>
-    <span><span class="key-hint">Esc</span> Close</span>
-  </div>
-
-</main>
-
-<button class="chat-fab" id="chatFab" onclick="toggleChat()" title="AI Copilot (C)">
-  <svg id="chatIcon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-</button>
-
-<div class="chat-panel" id="chatPanel">
-  <div class="chat-header">
-    <div class="chat-avatar">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><rect x="4" y="8" width="16" height="12" rx="3"/><circle cx="9" cy="14" r="1" fill="white"/><circle cx="15" cy="14" r="1" fill="white"/></svg>
-    </div>
-    <div class="flex-1 relative z-10">
-      <p class="font-bold text-sm">Observability Copilot</p>
-      <p class="text-xs opacity-80">Powered by Llama 3.2</p>
-    </div>
-    <button onclick="toggleChat()" class="relative z-10 w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors" style="background: transparent; border: none; cursor: pointer;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
-  </div>
-  <div class="chat-messages" id="chatMessages">
-    <div class="msg msg-bot">Hi! I'm your observability copilot. Ask me anything about your LLM traces.</div>
-  </div>
-  <div class="chat-suggestions" id="chatSuggestions">
-    <span class="suggestion" onclick="askSuggestion('What is observability?')">What is observability?</span>
-    <span class="suggestion" onclick="askSuggestion('Which feature costs most?')">Top feature</span>
-    <span class="suggestion" onclick="askSuggestion('How can I reduce cost?')">Optimize cost</span>
-    <span class="suggestion" onclick="askSuggestion('What is the slowest model?')">Slowest model</span>
-  </div>
-  <div class="chat-input-bar">
-    <input id="chatInput" type="text" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendChat()">
-    <button class="chat-send" onclick="sendChat()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="traceModal" onclick="if(event.target===this)closeModal()">
-  <div class="modal-content p-6">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-bold">Trace Details</h3>
-      <button onclick="closeModal()" class="btn-ghost w-8 h-8 rounded-lg flex items-center justify-center">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <div id="modalBody"></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="budgetModal" onclick="if(event.target===this)closeBudgetModal()">
-  <div class="modal-content p-6" style="max-width: 480px;">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-bold">Budget Alerts</h3>
-      <button onclick="closeBudgetModal()" class="btn-ghost w-8 h-8 rounded-lg flex items-center justify-center">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <p class="text-sm mb-4" style="color: var(--muted);">Alert when total cost exceeds threshold.</p>
-    <label class="text-xs font-bold block mb-2" style="color: var(--muted);">DAILY BUDGET (USD)</label>
-    <input id="budgetInput" type="number" step="0.01" value="1.00" class="w-full px-3 py-2.5 rounded-xl text-sm mb-4">
-    <button onclick="saveBudget()" class="btn-primary w-full py-3 rounded-xl text-white text-sm font-bold"><span class="relative z-10">Save</span></button>
-  </div>
-</div>
-
-<script>
-var c1, c2, c3;
-var palette = ['#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#ef4444'];
-var currentTraces = [];
-
-function isDark() { return document.documentElement.className === 'dark'; }
-function initTheme() { var s = localStorage.getItem('theme') || 'light'; document.documentElement.className = s; updateIcon(s); }
-function toggleTheme() { var c = document.documentElement.className === 'dark' ? 'light' : 'dark'; document.documentElement.className = c; localStorage.setItem('theme', c); updateIcon(c); load(); }
-function updateIcon(t) { document.getElementById('iconSun').style.display = t === 'dark' ? 'block' : 'none'; document.getElementById('iconMoon').style.display = t === 'dark' ? 'none' : 'block'; }
-
-function toast(msg) { var el = document.createElement('div'); el.className = 'toast'; el.textContent = msg; document.body.appendChild(el); setTimeout(function(){ el.remove(); }, 4000); }
-
-function sparkline(id, data, color) {
-  var svg = document.getElementById(id);
-  if (!data.length) { svg.innerHTML = ''; return; }
-  var max = Math.max.apply(null, data) || 1, min = Math.min.apply(null, data), range = max - min || 1;
-  var pts = data.map(function(v, i) { var x = (i / (data.length - 1)) * 100; var y = 40 - ((v - min) / range) * 30 - 5; return x + ',' + y; }).join(' ');
-  var areaPts = '0,44 ' + pts + ' 100,44';
-  svg.innerHTML = '<defs><linearGradient id="grad' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + color + '" stop-opacity="0.3"/><stop offset="100%" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs><polygon points="' + areaPts + '" fill="url(#grad' + id + ')"/><polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
-}
-
-function computeTrends(traces) {
-  var half = Math.floor(traces.length / 2);
-  var older = traces.slice(0, half), newer = traces.slice(half);
-  if (!older.length || !newer.length) return { req: 0, cost: 0, tok: 0, lat: 0 };
-  var oldCost = older.reduce(function(a, x){ return a + (x.cost_usd || 0); }, 0);
-  var newCost = newer.reduce(function(a, x){ return a + (x.cost_usd || 0); }, 0);
-  var costTrend = oldCost > 0 ? ((newCost - oldCost) / oldCost * 100) : 0;
-  var oldLat = older.reduce(function(a, x){ return a + (x.duration_ms || 0); }, 0) / older.length;
-  var newLat = newer.reduce(function(a, x){ return a + (x.duration_ms || 0); }, 0) / newer.length;
-  var latTrend = oldLat > 0 ? ((newLat - oldLat) / oldLat * 100) : 0;
-  return { req: (newer.length - older.length) / (older.length || 1) * 100, cost: costTrend, tok: costTrend, lat: latTrend };
-}
-
-function setTrend(id, value, invert) {
-  var el = document.getElementById(id);
-  var positive = invert ? value < 0 : value > 0;
-  var color = positive ? '#10b981' : '#ef4444';
-  el.textContent = (value > 0 ? '↑ ' : '↓ ') + Math.abs(value).toFixed(1) + '%';
-  el.style.color = color;
-  el.style.background = positive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)';
-}
-
-async function load() {
-  try {
-    var r = await Promise.all([fetch('/api/costs').then(function(x){ return x.json(); }), fetch('/api/spans').then(function(x){ return x.json(); })]);
-    var costs = r[0], spansRes = r[1];
-    var sp = spansRes.spans || [];
-    currentTraces = sp;
-
-    var fm = document.getElementById('filterModel').value;
-    var ff = document.getElementById('filterFeature').value;
-    var search = (document.getElementById('searchInput').value || '').toLowerCase();
-
-    var filtered = sp;
-    if (fm !== 'all') filtered = filtered.filter(function(x){ return x.model === fm; });
-    if (ff !== 'all') filtered = filtered.filter(function(x){ return x.feature === ff; });
-    if (search) filtered = filtered.filter(function(x){ return (x.trace_id || '').toLowerCase().indexOf(search) >= 0 || (x.model || '').toLowerCase().indexOf(search) >= 0 || (x.feature || '').toLowerCase().indexOf(search) >= 0; });
-
-    document.getElementById('filterInfo').textContent = filtered.length + ' / ' + sp.length;
-
-    var cf = {}, cm = {};
-    filtered.forEach(function(x){ cf[x.feature || 'unknown'] = (cf[x.feature || 'unknown'] || 0) + (x.cost_usd || 0); cm[x.model || 'unknown'] = (cm[x.model || 'unknown'] || 0) + (x.cost_usd || 0); });
-
-    var tc = 0; for (var k in cf) tc += cf[k];
-    var tt = 0; filtered.forEach(function(x){ tt += (x.input_tokens || 0) + (x.output_tokens || 0); });
-    var al = filtered.length ? filtered.reduce(function(a, x){ return a + (x.duration_ms || 0); }, 0) / filtered.length : 0;
-
-    document.getElementById('mReq').textContent = filtered.length.toLocaleString();
-    document.getElementById('mCost').textContent = '$' + tc.toFixed(4);
-    document.getElementById('mTok').textContent = tt.toLocaleString();
-    document.getElementById('mLat').textContent = al.toFixed(0) + 'ms';
-    document.getElementById('liveStatus').textContent = 'Live · ' + filtered.length;
-
-    var budget = parseFloat(localStorage.getItem('budget') || '1.00');
-    document.getElementById('bellBadge').style.display = tc > budget ? 'flex' : 'none';
-
-    var tr = computeTrends(filtered);
-    setTrend('trendReq', tr.req, false); setTrend('trendCost', tr.cost, true); setTrend('trendTok', tr.tok, true); setTrend('trendLat', tr.lat, true);
-
-    var last20 = filtered.slice(-20);
-    sparkline('spark1', last20.map(function(_, i){ return i + 1; }), '#3b82f6');
-    sparkline('spark2', last20.map(function(x){ return x.cost_usd || 0; }), '#10b981');
-    sparkline('spark3', last20.map(function(x){ return (x.input_tokens || 0) + (x.output_tokens || 0); }), '#a855f7');
-    sparkline('spark4', last20.map(function(x){ return x.duration_ms || 0; }), '#f97316');
-
-    var empty = document.getElementById('empty'), tbody = document.getElementById('tbody');
-    if (filtered.length === 0) { empty.style.display = 'block'; tbody.innerHTML = ''; } else { empty.style.display = 'none'; }
-
-    var gridColor = isDark() ? 'rgba(255,255,255,0.06)' : '#f1f5f9';
-    var tickColor = isDark() ? '#8892a6' : '#94a3b8';
-    var labelColor = isDark() ? '#c9d1d9' : '#334155';
-    var borderColor = isDark() ? '#0f1420' : '#ffffff';
-
-    if (c1) c1.destroy();
-    c1 = new Chart(document.getElementById('c1'), { type: 'bar', data: { labels: Object.keys(cf), datasets: [{ data: Object.values(cf), backgroundColor: Object.keys(cf).map(function(_, i){ return palette[i % palette.length]; }), borderRadius: 10, borderSkipped: false, barThickness: 28 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0f172a', padding: 14, borderRadius: 10, callbacks: { label: function(ctx){ return '$' + ctx.parsed.x.toFixed(6); } } } }, scales: { x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 11 } } }, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 12, weight: '600' } } } } } });
-
-    if (c2) c2.destroy();
-    c2 = new Chart(document.getElementById('c2'), { type: 'doughnut', data: { labels: Object.keys(cm), datasets: [{ data: Object.values(cm), backgroundColor: Object.keys(cm).map(function(_, i){ return palette[i % palette.length]; }), borderWidth: 4, borderColor: borderColor, hoverOffset: 10 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { color: labelColor, padding: 18, boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyle: 'circle', font: { size: 12, weight: '500' } } }, tooltip: { backgroundColor: '#0f172a', padding: 14, borderRadius: 10, callbacks: { label: function(ctx){ return ctx.label + ': $' + ctx.parsed.toFixed(6); } } } } } });
-
-    var modelLat = {};
-    filtered.forEach(function(x){ if (!modelLat[x.model]) modelLat[x.model] = []; modelLat[x.model].push(x.duration_ms || 0); });
-    var latModels = Object.keys(modelLat);
-    var latAvgs = latModels.map(function(m){ return modelLat[m].reduce(function(a,b){ return a+b; }, 0) / modelLat[m].length; });
-
-    if (c3) c3.destroy();
-    c3 = new Chart(document.getElementById('c3'), { type: 'bar', data: { labels: latModels, datasets: [{ data: latAvgs, backgroundColor: latModels.map(function(_, i){ return palette[i % palette.length]; }), borderRadius: 10, borderSkipped: false, barThickness: 36 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0f172a', padding: 14, borderRadius: 10, callbacks: { label: function(ctx){ return ctx.parsed.y.toFixed(0) + 'ms'; } } } }, scales: { x: { grid: { display: false }, ticks: { color: labelColor, font: { size: 11, weight: '600' } } }, y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 11 } } } } } });
-
-    var sorted = filtered.slice().sort(function(a, b){ return (b.cost_usd || 0) - (a.cost_usd || 0); }).slice(0, 5);
-    var topHtml = '';
-    sorted.forEach(function(x){
-      topHtml += '<div class="flex items-center justify-between p-3 rounded-xl row-hover" style="background: var(--subtle);" onclick="openTrace(\\'' + x.trace_id + '\\')">';
-      topHtml += '<div class="flex items-center gap-3"><span class="mono text-xs font-semibold" style="color: var(--muted);">' + (x.trace_id || '').slice(0, 10) + '</span><span class="text-xs font-bold">' + (x.feature || '-') + '</span></div>';
-      topHtml += '<span class="mono text-xs font-bold text-emerald-600">$' + (x.cost_usd || 0).toFixed(6) + '</span></div>';
-    });
-    document.getElementById('topExpensive').innerHTML = topHtml || '<p class="text-xs" style="color: var(--muted);">No data yet</p>';
-
-    var h = '';
-    filtered.slice(-15).reverse().forEach(function(x){
-      var mc = { 'llama3.2': 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20', 'gpt-4o': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20', 'claude-3-5-sonnet': 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/20' };
-      var cls = mc[x.model] || 'bg-slate-100 text-slate-700 border-slate-200';
-      h += '<tr class="row-hover" onclick="openTrace(\\'' + x.trace_id + '\\')">';
-      h += '<td class="px-6 py-4 mono text-xs" style="color: var(--muted);">' + (x.trace_id || '').slice(0, 14) + '</td>';
-      h += '<td class="px-6 py-4"><span class="inline-flex px-2.5 py-1 rounded-lg text-xs font-bold border ' + cls + '">' + (x.model || '?') + '</span></td>';
-      h += '<td class="px-6 py-4 font-semibold">' + (x.feature || '-') + '</td>';
-      h += '<td class="px-6 py-4">' + ((x.input_tokens || 0) + (x.output_tokens || 0)).toLocaleString() + '</td>';
-      h += '<td class="px-6 py-4 mono text-xs font-semibold">$' + (x.cost_usd || 0).toFixed(6) + '</td>';
-      h += '<td class="px-6 py-4"><span class="inline-flex items-center gap-1.5 text-xs font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>' + (x.duration_ms || 0).toFixed(0) + 'ms</span></td></tr>';
-    });
-    tbody.innerHTML = h;
-  } catch (e) { console.error(e); document.getElementById('liveStatus').textContent = 'Offline'; }
-}
-
-function openTrace(traceId) {
-  var x = currentTraces.find(function(t){ return t.trace_id === traceId; });
-  if (!x) return;
-  var html = '<div class="space-y-4"><div><span class="text-xs font-bold uppercase tracking-widest" style="color: var(--muted);">Trace ID</span><p class="mono text-sm mt-1 font-semibold">' + (x.trace_id || '-') + '</p></div><div class="grid grid-cols-2 gap-3">';
-  [['Model', x.model || '-'], ['Feature', x.feature || '-'], ['Input Tokens', x.input_tokens || 0], ['Output Tokens', x.output_tokens || 0], ['Cost', '$' + (x.cost_usd || 0).toFixed(6)], ['Latency', (x.duration_ms || 0).toFixed(0) + 'ms']].forEach(function(p){
-    html += '<div class="p-4 rounded-xl" style="background: var(--subtle);"><p class="text-xs font-semibold" style="color: var(--muted);">' + p[0] + '</p><p class="font-bold mt-1">' + p[1] + '</p></div>';
-  });
-  html += '</div></div>';
-  document.getElementById('modalBody').innerHTML = html;
-  document.getElementById('traceModal').classList.add('active');
-}
-function closeModal() { document.getElementById('traceModal').classList.remove('active'); }
-function openBudgetModal() { document.getElementById('budgetModal').classList.add('active'); document.getElementById('budgetInput').value = localStorage.getItem('budget') || '1.00'; }
-function closeBudgetModal() { document.getElementById('budgetModal').classList.remove('active'); }
-function saveBudget() { localStorage.setItem('budget', document.getElementById('budgetInput').value); closeBudgetModal(); toast('Budget saved'); load(); }
-
-function exportData(fmt) {
-  var content, mime, ext;
-  if (fmt === 'csv') {
-    content = 'trace_id,model,feature,input_tokens,output_tokens,cost_usd,duration_ms\\n';
-    currentTraces.forEach(function(x){ content += [x.trace_id, x.model, x.feature, x.input_tokens, x.output_tokens, x.cost_usd, x.duration_ms].join(',') + '\\n'; });
-    mime = 'text/csv'; ext = 'csv';
-  } else { content = JSON.stringify(currentTraces, null, 2); mime = 'application/json'; ext = 'json'; }
-  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: mime })); a.download = 'llm-traces.' + ext; a.click();
-  toast('Exported ' + currentTraces.length + ' traces');
-}
-
-async function gen() {
-  toast('Generating 10 real traces via Ollama... (~30 sec)');
-  try {
-    var res = await fetch('/api/seed-real', { method: 'POST' });
-    var data = await res.json();
-    toast(data.generated + ' real traces generated');
-    load();
-  } catch (e) {
-    toast('Error generating real traces');
-  }
-}
-
-function toggleChat() {
-  var panel = document.getElementById('chatPanel');
-  var fab = document.getElementById('chatFab');
-  var icon = document.getElementById('chatIcon');
-  var isActive = panel.classList.toggle('active');
-  fab.classList.toggle('active', isActive);
-  if (isActive) {
-    icon.innerHTML = '<path d="M18 6 6 18M6 6l12 12"/>';
-    setTimeout(function(){ document.getElementById('chatInput').focus(); }, 300);
-  } else {
-    icon.innerHTML = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>';
-  }
-}
-
-function addMessage(text, isUser) {
-  var container = document.getElementById('chatMessages');
-  var div = document.createElement('div');
-  div.className = 'msg ' + (isUser ? 'msg-user' : 'msg-bot');
-  var html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
-    .replace(/`(.+?)`/g, '<code>$1</code>');
-  div.innerHTML = html;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function showTyping() {
-  var container = document.getElementById('chatMessages');
-  var div = document.createElement('div');
-  div.className = 'typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<span></span><span></span><span></span>';
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function hideTyping() {
-  var t = document.getElementById('typingIndicator');
-  if (t) t.remove();
-}
-
-async function sendChat() {
-  var input = document.getElementById('chatInput');
-  var msg = input.value.trim();
-  if (!msg) return;
-  addMessage(msg, true);
-  input.value = '';
-  document.getElementById('chatSuggestions').style.display = 'none';
-  showTyping();
-  try {
-    var res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
-    var data = await res.json();
-    hideTyping();
-    addMessage(data.reply, false);
-  } catch (e) {
-    hideTyping();
-    addMessage('Sorry, something went wrong. Try again.', false);
-  }
-}
-
-function askSuggestion(text) {
-  document.getElementById('chatInput').value = text;
-  sendChat();
-}
-
-document.addEventListener('keydown', function(e){
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  if (e.key === 'g' || e.key === 'G') gen();
-  if (e.key === 'r' || e.key === 'R') load();
-  if (e.key === 't' || e.key === 'T') toggleTheme();
-  if (e.key === 'c' || e.key === 'C') toggleChat();
-  if (e.key === 'Escape') { closeModal(); closeBudgetModal(); }
-});
-
-initTheme();
-load();
-setInterval(load, 3000);
-</script>
-</body>
-</html>"""
-
-
-@app.get("/", response_class=HTMLResponse)
-def root():
-    return HTML_PAGE
+    <div class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M3 12h18M3 18h18"/
