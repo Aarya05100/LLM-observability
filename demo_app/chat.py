@@ -43,7 +43,7 @@ def send_trace(model, feature, prompt, completion, input_tokens, output_tokens, 
         print(f"[warn] Could not send trace: {e}")
 
 
-def chat(user_message, model="llama3.2", feature="chat"):
+def chat(user_message, model="llama-3.3-70b-versatile", feature="chat"):
     start = time.time()
     response = client.chat.completions.create(
         model=model,
