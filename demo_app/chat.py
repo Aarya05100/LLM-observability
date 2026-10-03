@@ -9,8 +9,8 @@ OBSERVABILITY_URL = "http://localhost:8000/v1/traces"
 
 # Local Ollama - no API key needed
 client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
 )
 
 
