@@ -14,7 +14,7 @@ app.include_router(traces_router, prefix="/api")
 store = MemoryStore()
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-120b"
 DASHBOARD_FILE = Path(__file__).parent / "dashboard.html"
 
 
