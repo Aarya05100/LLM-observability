@@ -2,8 +2,6 @@
 
 Real-time tracing, cost tracking, and AI copilot for LLM applications.
 
-![Dashboard](docs/dashboard.png)
-
 ## Problem
 
 LLM apps are black boxes. Traditional APM tools only show HTTP spans — the internal steps (retrieval, tool calls, sub-agents) stay invisible. Teams don't know:
