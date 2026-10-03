@@ -2,313 +2,151 @@
 <html lang="en" class="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LLM Observability</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  :root { --bg: #fafbfc; --card: rgba(255,255,255,0.85); --card-solid: #ffffff; --border: rgba(226,232,240,0.9); --text: #0a0e1a; --muted: #64748b; --subtle: #f1f5f9; --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px -8px rgba(15,23,42,0.08); }
-  html.dark { --bg: #05070d; --card: rgba(15,20,32,0.7); --card-solid: #0f1420; --border: rgba(30,37,54,0.9); --text: #e6edf3; --muted: #8892a6; --subtle: #121826; --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 8px 32px -8px rgba(0,0,0,0.5); }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); transition: background 0.4s, color 0.4s; min-height: 100vh; -webkit-font-smoothing: antialiased; }
-  .mono { font-family: 'JetBrains Mono', monospace; }
-  .orb { position: fixed; border-radius: 50%; filter: blur(100px); opacity: 0.35; pointer-events: none; z-index: 0; }
-  .orb-1 { width: 500px; height: 500px; background: radial-gradient(circle, #6366f1, transparent 70%); top: -200px; left: -100px; animation: float1 20s ease-in-out infinite; }
-  .orb-2 { width: 400px; height: 400px; background: radial-gradient(circle, #ec4899, transparent 70%); top: 40%; right: -150px; animation: float2 25s ease-in-out infinite; }
-  .orb-3 { width: 450px; height: 450px; background: radial-gradient(circle, #14b8a6, transparent 70%); bottom: -200px; left: 30%; animation: float3 30s ease-in-out infinite; }
-  @keyframes float1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(80px, 60px); } }
-  @keyframes float2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-100px, 80px); } }
-  @keyframes float3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px, -80px); } }
-  html.dark .orb { opacity: 0.15; }
-  .grid-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; background-image: linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%); }
-  header, main { position: relative; z-index: 1; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; backdrop-filter: blur(20px) saturate(180%); box-shadow: var(--shadow); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
-  .card:hover { transform: translateY(-3px); box-shadow: 0 4px 6px rgba(0,0,0,0.04), 0 20px 48px -12px rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.3); }
-  .grad-text { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: gradShift 6s ease infinite; }
-  @keyframes gradShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-  .pulse-dot { animation: pulse 2s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.7); } 50% { opacity: 0.9; box-shadow: 0 0 0 6px rgba(16,185,129,0); } }
-  .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); background-size: 200% 200%; transition: all 0.3s; position: relative; overflow: hidden; }
-  .btn-primary::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); transition: left 0.5s; }
-  .btn-primary:hover { background-position: 100% 0; box-shadow: 0 8px 24px -4px rgba(99,102,241,0.5); transform: translateY(-1px); }
-  .btn-primary:hover::before { left: 100%; }
-  .btn-ghost { background: var(--card-solid); border: 1px solid var(--border); transition: all 0.2s; }
-  .btn-ghost:hover { border-color: #6366f1; color: #6366f1; transform: translateY(-1px); }
-  select, input { background: var(--card-solid); color: var(--text); border: 1px solid var(--border); transition: all 0.2s; }
-  select:focus, input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
-  .table-header { background: var(--subtle); }
-  .row-hover { cursor: pointer; transition: background 0.15s; }
-  .row-hover:hover { background: var(--subtle); }
-  .metric-value { background: linear-gradient(180deg, var(--text) 0%, var(--muted) 130%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-variant-numeric: tabular-nums; }
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(5,7,13,0.7); backdrop-filter: blur(8px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s; }
-  .modal-backdrop.active { display: flex; }
-  .modal-content { background: var(--card-solid); border: 1px solid var(--border); border-radius: 20px; max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 64px -12px rgba(0,0,0,0.4); animation: modalIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-  @keyframes modalIn { from { opacity: 0; transform: scale(0.94) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  .sparkline { height: 44px; width: 100%; overflow: visible; }
-  .badge-alert { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #ef4444; color: white; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid var(--card-solid); }
-  .toast { position: fixed; bottom: 24px; right: 24px; background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 14px 22px; border-radius: 14px; font-size: 14px; font-weight: 500; z-index: 200; animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 16px 48px -8px rgba(0,0,0,0.5); border: 1px solid rgba(99,102,241,0.3); }
-  @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  .key-hint { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--subtle); border: 1px solid var(--border); font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
-  .header-blur { background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(180%); border-bottom: 1px solid var(--border); }
-  html.dark .header-blur { background: rgba(5,7,13,0.75); }
-  .fade-in { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); font-size: 11px; font-weight: 600; color: #6366f1; }
-  .chat-fab { position: fixed; bottom: 28px; right: 28px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 90; box-shadow: 0 12px 32px -8px rgba(99,102,241,0.6); transition: all 0.3s; border: none; }
-  .chat-fab:hover { transform: scale(1.1) rotate(-5deg); }
-  .chat-fab.active { transform: scale(0.9) rotate(90deg); }
-  .chat-panel { position: fixed; bottom: 100px; right: 28px; width: 400px; height: 600px; max-height: calc(100vh - 140px); background: var(--card-solid); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 32px 80px -12px rgba(0,0,0,0.4); z-index: 90; display: flex; flex-direction: column; overflow: hidden; transform: translateY(20px) scale(0.95); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-  .chat-panel.active { transform: translateY(0) scale(1); opacity: 1; pointer-events: all; }
-  .chat-header { padding: 18px 20px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; display: flex; align-items: center; gap: 12px; }
-  .chat-avatar { width: 38px; height: 38px; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 13.5px; line-height: 1.5; word-wrap: break-word; }
-  .msg-bot { background: var(--subtle); color: var(--text); border-bottom-left-radius: 4px; align-self: flex-start; }
-  .msg-user { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border-bottom-right-radius: 4px; align-self: flex-end; }
-  .msg strong { font-weight: 700; }
-  .chat-suggestions { padding: 0 20px 12px; display: flex; flex-wrap: wrap; gap: 6px; }
-  .suggestion { padding: 6px 12px; border-radius: 20px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #6366f1; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-  .suggestion:hover { background: rgba(99,102,241,0.2); }
-  .chat-input-bar { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
-  .chat-input-bar input { flex: 1; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; }
-  .chat-send { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-  .typing { display: flex; gap: 4px; padding: 12px 16px; align-self: flex-start; background: var(--subtle); border-radius: 16px; }
-  .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: typing 1.4s infinite; }
-  .typing span:nth-child(2) { animation-delay: 0.2s; }
-  .typing span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes typing { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+:root { --bg: #fafbfc; --card: #fff; --border: #e2e8f0; --text: #0a0e1a; --muted: #64748b; --subtle: #f1f5f9; }
+html.dark { --bg: #05070d; --card: #0f1420; --border: #1e2536; --text: #e6edf3; --muted: #8892a6; --subtle: #121826; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: 0.3s; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.grad { background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header { padding: 16px 32px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--card); }
+.btn { padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-weight: 600; }
+.btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; }
+.main { max-width: 1280px; margin: 0 auto; padding: 32px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.metric { font-size: 32px; font-weight: 900; margin-top: 8px; }
+.label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 12px 24px; font-size: 11px; text-transform: uppercase; color: var(--muted); background: var(--subtle); border-bottom: 1px solid var(--border); }
+td { padding: 14px 24px; border-bottom: 1px solid var(--border); }
+.chat-fab { position: fixed; bottom: 28px; right: 28px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899); border: none; color: white; font-size: 24px; cursor: pointer; z-index: 90; box-shadow: 0 12px 32px -8px rgba(99,102,241,0.6); }
+.chat-panel { position: fixed; bottom: 100px; right: 28px; width: 380px; height: 560px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 24px 64px rgba(0,0,0,0.3); z-index: 90; display: none; flex-direction: column; overflow: hidden; }
+.chat-panel.active { display: flex; }
+.chat-header { padding: 16px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; font-weight: 700; }
+.chat-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; }
+.msg-bot { background: var(--subtle); align-self: flex-start; }
+.msg-user { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; align-self: flex-end; }
+.chat-input { padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; }
+.chat-input input { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.chat-input button { padding: 10px 18px; border-radius: 10px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; cursor: pointer; font-weight: 600; }
+.toast { position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: white; padding: 12px 20px; border-radius: 12px; font-size: 13px; z-index: 200; }
 </style>
-<script>tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] } } } }</script>
 </head>
 <body>
 
-<div class="orb orb-1"></div>
-<div class="orb orb-2"></div>
-<div class="orb orb-3"></div>
-<div class="grid-bg"></div>
-
-<header class="header-blur sticky top-0 z-40">
-  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-    <div class="flex items-center gap-3 shrink-0">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/40">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      </div>
-      <div class="hidden md:block">
-        <h1 class="text-base font-bold tracking-tight">LLM Observability</h1>
-        <p class="text-xs" style="color: var(--muted);">Real-time tracing</p>
-      </div>
-    </div>
-    <div class="flex-1 max-w-md hidden lg:block">
-      <div class="relative">
-        <input id="searchInput" type="text" placeholder="Search traces, models, features..." class="w-full pl-4 pr-4 py-2 rounded-xl text-sm" oninput="load()">
-      </div>
-    </div>
-    <div class="flex items-center gap-2 shrink-0">
-      <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);">
-        <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></div>
-        <span class="text-xs font-bold text-emerald-600" id="liveStatus">Live</span>
-      </div>
-      <button onclick="toggleTheme()" class="btn-ghost w-9 h-9 rounded-xl flex items-center justify-center" title="Theme (T)">
-        <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-      <button onclick="gen()" class="btn-primary px-4 h-9 rounded-xl text-white text-sm font-bold"><span class="relative z-10">Generate</span></button>
-    </div>
-  </div>
-</header>
-
-<main class="max-w-7xl mx-auto px-6 py-10 fade-in">
-  <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+<div class="header">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:white;font-weight:900">L</div>
     <div>
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);">
-        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 pulse-dot"></div>
-        <span class="text-xs font-bold tracking-wider" style="color: #6366f1;">LIVE MONITORING</span>
-      </div>
-      <h2 class="text-4xl md:text-5xl font-black tracking-tighter leading-none"><span class="grad-text">Real-time insights</span></h2>
-      <p class="text-base mt-3 max-w-xl" style="color: var(--muted);">Track every prompt, token, and dollar across your LLM applications. Powered by Groq (llama-3.3-70b).</p>
+      <div style="font-weight:700">LLM Observability</div>
+      <div style="font-size:11px;color:var(--muted)" id="liveStatus">Live</div>
     </div>
   </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="toggleTheme()" id="themeBtn">Dark</button>
+    <button class="btn btn-primary" onclick="gen()">Generate</button>
+  </div>
+</div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-    <div class="card p-6">
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Requests</p>
-      <p class="text-4xl font-black metric-value" id="mReq">0</p>
-    </div>
-    <div class="card p-6">
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Cost</p>
-      <p class="text-4xl font-black metric-value" id="mCost">$0.00</p>
-    </div>
-    <div class="card p-6">
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Total Tokens</p>
-      <p class="text-4xl font-black metric-value" id="mTok">0</p>
-    </div>
-    <div class="card p-6">
-      <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color: var(--muted);">Avg Latency</p>
-      <p class="text-4xl font-black metric-value" id="mLat">0ms</p>
-    </div>
+<div class="main">
+  <h1 style="font-size:44px;font-weight:900;letter-spacing:-1px;margin-bottom:8px"><span class="grad">Real-time insights</span></h1>
+  <p style="color:var(--muted);margin-bottom:24px">Powered by Groq (llama-3.3-70b)</p>
+
+  <div class="grid4">
+    <div class="card"><div class="label">Total Requests</div><div class="metric" id="mReq">0</div></div>
+    <div class="card"><div class="label">Total Cost</div><div class="metric" id="mCost">$0.00</div></div>
+    <div class="card"><div class="label">Total Tokens</div><div class="metric" id="mTok">0</div></div>
+    <div class="card"><div class="label">Avg Latency</div><div class="metric" id="mLat">0ms</div></div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-4">Cost by Feature</h3>
-      <div style="height: 280px;"><canvas id="c1"></canvas></div>
-    </div>
-    <div class="card p-6">
-      <h3 class="font-bold text-lg mb-4">Cost by Model</h3>
-      <div style="height: 280px;"><canvas id="c2"></canvas></div>
-    </div>
+  <div class="grid2">
+    <div class="card"><h3 style="margin-bottom:16px">Cost by Feature</h3><canvas id="c1" style="max-height:260px"></canvas></div>
+    <div class="card"><h3 style="margin-bottom:16px">Cost by Model</h3><canvas id="c2" style="max-height:260px"></canvas></div>
   </div>
 
-  <div class="card overflow-hidden">
-    <div class="px-6 py-5 border-b" style="border-color: var(--border);">
-      <h3 class="font-bold text-lg">Recent Traces</h3>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="table-header"><tr>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Trace ID</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Model</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Feature</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Tokens</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Cost</th>
-          <th class="text-left px-6 py-3 text-xs font-bold uppercase" style="color: var(--muted);">Latency</th>
-        </tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-    <div id="empty" class="py-20 text-center">
-      <p class="font-bold">No traces yet</p>
-      <p class="text-xs mt-1" style="color: var(--muted);">Click "Generate" to populate via Groq</p>
-    </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border)"><h3>Recent Traces</h3></div>
+    <table><thead><tr><th>Trace ID</th><th>Model</th><th>Feature</th><th>Tokens</th><th>Cost</th><th>Latency</th></tr></thead><tbody id="tbody"></tbody></table>
+    <div id="empty" style="padding:60px;text-align:center;color:var(--muted)">No traces yet. Click Generate.</div>
   </div>
-</main>
+</div>
 
-<button class="chat-fab" id="chatFab" onclick="toggleChat()">
-  <svg id="chatIcon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-</button>
-
+<button class="chat-fab" onclick="toggleChat()">💬</button>
 <div class="chat-panel" id="chatPanel">
-  <div class="chat-header">
-    <div class="chat-avatar">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-    </div>
-    <div class="flex-1">
-      <p class="font-bold text-sm">Observability Copilot</p>
-      <p class="text-xs opacity-80">Powered by Groq</p>
-    </div>
-    <button onclick="toggleChat()" class="w-8 h-8 rounded-lg" style="background: transparent; border: none; cursor: pointer;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
-  </div>
-  <div class="chat-messages" id="chatMessages">
-    <div class="msg msg-bot">Hi! I'm your observability copilot. Ask me anything about your LLM traces.</div>
-  </div>
-  <div class="chat-input-bar">
-    <input id="chatInput" type="text" placeholder="Ask anything..." onkeydown="if(event.key==='Enter')sendChat()">
-    <button class="chat-send" onclick="sendChat()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
+  <div class="chat-header">Observability Copilot</div>
+  <div class="chat-msgs" id="chatMsgs"><div class="msg msg-bot">Hi! Ask me about your traces.</div></div>
+  <div class="chat-input">
+    <input id="chatInput" placeholder="Ask..." onkeydown="if(event.key==='Enter')sendChat()">
+    <button onclick="sendChat()">Send</button>
   </div>
 </div>
 
 <script>
-var c1, c2;
-var palette = ['#6366f1', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#ef4444'];
-
-function initTheme() { var s = localStorage.getItem('theme') || 'light'; document.documentElement.className = s; updateIcon(s); }
-function toggleTheme() { var c = document.documentElement.className === 'dark' ? 'light' : 'dark'; document.documentElement.className = c; localStorage.setItem('theme', c); updateIcon(c); load(); }
-function updateIcon(t) { document.getElementById('iconSun').style.display = t === 'dark' ? 'block' : 'none'; document.getElementById('iconMoon').style.display = t === 'dark' ? 'none' : 'block'; }
-function toast(msg) { var el = document.createElement('div'); el.className = 'toast'; el.textContent = msg; document.body.appendChild(el); setTimeout(function(){ el.remove(); }, 4000); }
+var c1, c2, palette = ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#ef4444'];
+function initTheme() { var s = localStorage.getItem('theme') || 'light'; document.documentElement.className = s; document.getElementById('themeBtn').textContent = s === 'dark' ? 'Light' : 'Dark'; }
+function toggleTheme() { var c = document.documentElement.className === 'dark' ? 'light' : 'dark'; document.documentElement.className = c; localStorage.setItem('theme', c); document.getElementById('themeBtn').textContent = c === 'dark' ? 'Light' : 'Dark'; load(); }
+function toast(m) { var el = document.createElement('div'); el.className = 'toast'; el.textContent = m; document.body.appendChild(el); setTimeout(function(){ el.remove(); }, 4000); }
 
 async function load() {
   try {
     var r = await Promise.all([fetch('/api/costs').then(function(x){ return x.json(); }), fetch('/api/spans').then(function(x){ return x.json(); })]);
-    var costs = r[0], spansRes = r[1];
-    var sp = spansRes.spans || [];
+    var costs = r[0], sp = r[1].spans || [];
     var cf = {}, cm = {};
-    sp.forEach(function(x){ cf[x.feature || 'unknown'] = (cf[x.feature || 'unknown'] || 0) + (x.cost_usd || 0); cm[x.model || 'unknown'] = (cm[x.model || 'unknown'] || 0) + (x.cost_usd || 0); });
-
+    sp.forEach(function(x){ cf[x.feature||'?'] = (cf[x.feature||'?']||0) + (x.cost_usd||0); cm[x.model||'?'] = (cm[x.model||'?']||0) + (x.cost_usd||0); });
     var tc = 0; for (var k in cf) tc += cf[k];
-    var tt = 0; sp.forEach(function(x){ tt += (x.input_tokens || 0) + (x.output_tokens || 0); });
-    var al = sp.length ? sp.reduce(function(a, x){ return a + (x.duration_ms || 0); }, 0) / sp.length : 0;
-
-    document.getElementById('mReq').textContent = sp.length.toLocaleString();
+    var tt = 0; sp.forEach(function(x){ tt += (x.input_tokens||0) + (x.output_tokens||0); });
+    var al = sp.length ? sp.reduce(function(a,x){ return a + (x.duration_ms||0); }, 0) / sp.length : 0;
+    document.getElementById('mReq').textContent = sp.length;
     document.getElementById('mCost').textContent = '$' + tc.toFixed(4);
-    document.getElementById('mTok').textContent = tt.toLocaleString();
+    document.getElementById('mTok').textContent = tt;
     document.getElementById('mLat').textContent = al.toFixed(0) + 'ms';
-    document.getElementById('liveStatus').textContent = 'Live · ' + sp.length;
-
-    var empty = document.getElementById('empty'), tbody = document.getElementById('tbody');
-    if (sp.length === 0) { empty.style.display = 'block'; tbody.innerHTML = ''; } else { empty.style.display = 'none'; }
-
-    var gridColor = document.documentElement.className === 'dark' ? 'rgba(255,255,255,0.06)' : '#f1f5f9';
-    var tickColor = document.documentElement.className === 'dark' ? '#8892a6' : '#94a3b8';
-    var labelColor = document.documentElement.className === 'dark' ? '#c9d1d9' : '#334155';
-
+    document.getElementById('liveStatus').textContent = 'Live · ' + sp.length + ' traces';
+    document.getElementById('empty').style.display = sp.length === 0 ? 'block' : 'none';
+    var dark = document.documentElement.className === 'dark';
     if (c1) c1.destroy();
-    c1 = new Chart(document.getElementById('c1'), { type: 'bar', data: { labels: Object.keys(cf), datasets: [{ data: Object.values(cf), backgroundColor: Object.keys(cf).map(function(_, i){ return palette[i % palette.length]; }), borderRadius: 8 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: gridColor }, ticks: { color: tickColor } }, y: { grid: { display: false }, ticks: { color: labelColor } } } } });
-
+    c1 = new Chart(document.getElementById('c1'), { type: 'bar', data: { labels: Object.keys(cf), datasets: [{ data: Object.values(cf), backgroundColor: palette, borderRadius: 6 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: dark ? '#8892a6' : '#64748b' } }, y: { ticks: { color: dark ? '#c9d1d9' : '#334155' } } } } });
     if (c2) c2.destroy();
-    c2 = new Chart(document.getElementById('c2'), { type: 'doughnut', data: { labels: Object.keys(cm), datasets: [{ data: Object.values(cm), backgroundColor: Object.keys(cm).map(function(_, i){ return palette[i % palette.length]; }), borderWidth: 3, borderColor: document.documentElement.className === 'dark' ? '#0f1420' : '#ffffff' }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { color: labelColor } } } } });
-
+    c2 = new Chart(document.getElementById('c2'), { type: 'doughnut', data: { labels: Object.keys(cm), datasets: [{ data: Object.values(cm), backgroundColor: palette, borderWidth: 3, borderColor: dark ? '#0f1420' : '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { color: dark ? '#c9d1d9' : '#334155' } } } } });
     var h = '';
     sp.slice(-15).reverse().forEach(function(x){
-      h += '<tr class="row-hover">';
-      h += '<td class="px-6 py-4 mono text-xs" style="color: var(--muted);">' + (x.trace_id || '').slice(0, 14) + '</td>';
-      h += '<td class="px-6 py-4 font-semibold">' + (x.model || '?') + '</td>';
-      h += '<td class="px-6 py-4">' + (x.feature || '-') + '</td>';
-      h += '<td class="px-6 py-4">' + ((x.input_tokens || 0) + (x.output_tokens || 0)) + '</td>';
-      h += '<td class="px-6 py-4 mono text-xs">$' + (x.cost_usd || 0).toFixed(6) + '</td>';
-      h += '<td class="px-6 py-4">' + (x.duration_ms || 0).toFixed(0) + 'ms</td></tr>';
+      h += '<tr><td style="font-family:monospace;color:var(--muted)">' + (x.trace_id||'').slice(0,14) + '</td><td style="font-weight:600">' + (x.model||'?') + '</td><td>' + (x.feature||'-') + '</td><td>' + ((x.input_tokens||0)+(x.output_tokens||0)) + '</td><td style="font-family:monospace">$' + (x.cost_usd||0).toFixed(6) + '</td><td>' + (x.duration_ms||0).toFixed(0) + 'ms</td></tr>';
     });
-    tbody.innerHTML = h;
+    document.getElementById('tbody').innerHTML = h;
   } catch (e) { console.error(e); }
 }
 
 async function gen() {
-  toast('Generating 10 real traces via Groq... (~20 sec)');
+  toast('Generating 10 real traces via Groq...');
   try {
     var res = await fetch('/api/seed-real', { method: 'POST' });
     var data = await res.json();
-    toast(data.generated + ' real traces generated');
+    toast(data.generated + ' traces generated');
     load();
-  } catch (e) {
-    toast('Error: ' + e.message);
-  }
+  } catch (e) { toast('Error: ' + e.message); }
 }
 
-function toggleChat() {
-  var panel = document.getElementById('chatPanel');
-  var isActive = panel.classList.toggle('active');
-  document.getElementById('chatFab').classList.toggle('active', isActive);
-}
-
-function addMessage(text, isUser) {
-  var container = document.getElementById('chatMessages');
-  var div = document.createElement('div');
-  div.className = 'msg ' + (isUser ? 'msg-user' : 'msg-bot');
-  div.innerHTML = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function showTyping() {
-  var container = document.getElementById('chatMessages');
-  var div = document.createElement('div');
-  div.className = 'typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<span></span><span></span><span></span>';
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-function hideTyping() { var t = document.getElementById('typingIndicator'); if (t) t.remove(); }
-
+function toggleChat() { document.getElementById('chatPanel').classList.toggle('active'); }
+function addMsg(text, user) { var c = document.getElementById('chatMsgs'); var d = document.createElement('div'); d.className = 'msg ' + (user ? 'msg-user' : 'msg-bot'); d.innerHTML = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); c.appendChild(d); c.scrollTop = c.scrollHeight; }
 async function sendChat() {
-  var input = document.getElementById('chatInput');
-  var msg = input.value.trim();
-  if (!msg) return;
-  addMessage(msg, true);
- 
+  var i = document.getElementById('chatInput'), m = i.value.trim();
+  if (!m) return;
+  addMsg(m, true); i.value = '';
+  addMsg('...', false);
+  try {
+    var r = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: m}) });
+    var d = await r.json();
+    document.getElementById('chatMsgs').lastChild.remove();
+    addMsg(d.reply, false);
+  } catch (e) { addMsg('Error', false); }
+}
+
+initTheme();
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>
